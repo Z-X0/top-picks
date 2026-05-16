@@ -117,7 +117,7 @@ export default function ChatPanel({ room, meId }) {
             </button>
           </div>
 
-          {/* Connected players (with IP) */}
+          {/* Connected players */}
           <div className="px-4 py-2 border-b border-white/10 bg-white/[0.02]">
             <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1.5">
               players
@@ -136,11 +136,10 @@ export default function ChatPanel({ room, meId }) {
                     {p.id === meId && <span className="text-white/40 font-normal"> (you)</span>}
                   </span>
                   {p.isHost && (
-                    <span className="text-[9px] uppercase tracking-widest bg-fuchsia-500/20 text-fuchsia-200 border border-fuchsia-400/30 rounded-full px-1.5">
+                    <span className="ml-auto text-[9px] uppercase tracking-widest bg-fuchsia-500/20 text-fuchsia-200 border border-fuchsia-400/30 rounded-full px-1.5">
                       host
                     </span>
                   )}
-                  <span className="ml-auto font-mono text-[10px] text-white/40">{p.ip || "?"}</span>
                 </div>
               ))}
             </div>
@@ -176,7 +175,6 @@ export default function ChatPanel({ room, meId }) {
                           >
                             {m.name}
                           </span>
-                          <span className="font-mono text-[10px] text-white/40">{m.ip}</span>
                           <span className="text-[10px] text-white/30 ml-auto">{timeOf(m.ts)}</span>
                         </div>
                         <div className="text-sm text-white/90 mt-0.5 break-words whitespace-pre-wrap">

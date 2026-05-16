@@ -236,7 +236,6 @@ function publicRoom(room) {
       isHost: p.isHost,
       score: p.score,
       submitted: room.picks.has(p.id),
-      ip: p.ip,
     })),
     artist: room.artist,
     albums: room.albums.map((a) => ({ id: a.id, name: a.name, year: a.year, artwork: a.artwork })),
@@ -371,7 +370,7 @@ io.on("connection", (socket) => {
     socket.join(code);
     pushChat(room, {
       kind: "system",
-      text: `${playerName} created the room (${ip})`,
+      text: `${playerName} created the room`,
     });
     ack?.({ ok: true, code });
     broadcast(io, code);
@@ -390,7 +389,7 @@ io.on("connection", (socket) => {
     socket.join(code);
     pushChat(room, {
       kind: "system",
-      text: `${playerName} joined (${ip})`,
+      text: `${playerName} joined`,
     });
     ack?.({ ok: true, code });
     broadcast(io, code);
@@ -407,7 +406,6 @@ io.on("connection", (socket) => {
       kind: "msg",
       playerId: player.id,
       name: player.name,
-      ip: player.ip,
       text: clean,
     });
     ack?.({ ok: true });
@@ -562,7 +560,7 @@ io.on("connection", (socket) => {
     if (leaving) {
       pushChat(room, {
         kind: "system",
-        text: `${leaving.name} left (${leaving.ip})`,
+        text: `${leaving.name} left`,
       });
     }
     if (room.hostId === socket.id) {
