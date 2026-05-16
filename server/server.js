@@ -230,43 +230,55 @@ function broadcast(io, code) {
 function computeReveal(room) {
   const album = room.currentAlbum?.album;
   const tracks = room.currentAlbum?.tracks || [];
-  const trackById = new Map(tracks.map((t) => [t.id, t]));
 
-  // Tally votes across all players' picks
-  const tally = new Map(); // trackId -> count
-  for (const picks of room.picks.values()) {
+  // For each track, build the list of voters (player ids + names).
+  // voters: trackId -> Array<{ id, name }>
+  const voters = new Map();
+  for (const [playerId, picks] of room.picks.entries()) {
+    const player = room.players.get(playerId);
+    if (!player) continue;
     for (const trackId of picks) {
-      tally.set(trackId, (tally.get(trackId) || 0) + 1);
+      if (!voters.has(trackId)) voters.set(trackId, []);
+      voters.get(trackId).push({ id: player.id, name: player.name });
     }
   }
 
-  // Sort tracks by vote count desc, then by track number asc as tiebreaker
-  const ranked = tracks
-    .map((t) => ({ track: t, votes: tally.get(t.id) || 0 }))
-    .sort((a, b) => b.votes - a.votes || a.track.trackNumber - b.track.trackNumber);
-  const consensus = ranked.slice(0, 3);
-  const consensusIds = new Set(consensus.map((c) => c.track.id));
-
-  // Per-player score for this album = number of their picks in consensus
-  const playerResults = [...room.players.values()].map((p) => {
-    const picks = room.picks.get(p.id) || [];
-    const matches = picks.filter((id) => consensusIds.has(id));
-    p.score += matches.length;
+  // Build the per-track vote summary used for the bar graph.
+  // Sorted by track number so the album reads top-to-bottom in tracklist order.
+  const trackVotes = tracks.map((t) => {
+    const vs = voters.get(t.id) || [];
     return {
-      id: p.id,
-      name: p.name,
-      picks: picks.map((id) => {
-        const t = trackById.get(id);
-        return t ? { id: t.id, name: t.name, trackNumber: t.trackNumber } : null;
-      }).filter(Boolean),
-      matches: matches.length,
-      totalScore: p.score,
+      id: t.id,
+      name: t.name,
+      trackNumber: t.trackNumber,
+      votes: vs.length,
+      voters: vs,
     };
   });
 
-  return { album, consensus: consensus.map((c) => ({
-    id: c.track.id, name: c.track.name, trackNumber: c.track.trackNumber, votes: c.votes,
-  })), playerResults };
+  // Consensus = top 3 by votes, tiebreak by track number
+  const consensus = [...trackVotes]
+    .sort((a, b) => b.votes - a.votes || a.trackNumber - b.trackNumber)
+    .slice(0, 3);
+  const consensusIds = new Set(consensus.map((c) => c.id));
+
+  // Update running totals so the final screen still has scores
+  for (const p of room.players.values()) {
+    const picks = room.picks.get(p.id) || [];
+    p.score += picks.filter((id) => consensusIds.has(id)).length;
+  }
+
+  return {
+    album,
+    trackVotes,
+    consensus: consensus.map((c) => ({
+      id: c.id,
+      name: c.name,
+      trackNumber: c.trackNumber,
+      votes: c.votes,
+    })),
+    totalVoters: room.picks.size,
+  };
 }
 
 /* ------------------------------------------------------------------ */
