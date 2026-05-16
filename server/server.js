@@ -366,12 +366,24 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("game:start", async (_payload, ack) => {
+  socket.on("game:start", async (payload, ack) => {
     const room = getRoomFromSocket();
     if (!room || room.hostId !== socket.id) return ack?.({ ok: false, error: "not host" });
     if (room.phase !== "lobby") return ack?.({ ok: false, error: "already started" });
     if (!room.artist || room.albums.length === 0) return ack?.({ ok: false, error: "no artist set" });
     if (room.players.size < 1) return ack?.({ ok: false, error: "no players" });
+
+    // Optional: host can pass a subset of album ids to play (and re-order them).
+    const requested = Array.isArray(payload?.albumIds) ? payload.albumIds : null;
+    if (requested && requested.length > 0) {
+      const idSet = new Set(requested.map(Number));
+      const byId = new Map(room.albums.map((a) => [a.id, a]));
+      // Preserve the order requested by the host
+      const filtered = requested.map(Number).map((id) => byId.get(id)).filter(Boolean);
+      if (filtered.length === 0) return ack?.({ ok: false, error: "no valid albums" });
+      // also keep any others out (only the selected ones survive)
+      room.albums = filtered.filter((a) => idSet.has(a.id));
+    }
 
     room.albumIndex = -1;
     await loadNextAlbum(room);
