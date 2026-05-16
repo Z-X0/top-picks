@@ -22,12 +22,20 @@ export default function Reveal({ room, iAmHost }) {
   if (!reveal) return null;
 
   const album = reveal.album;
-  const tracks = reveal.trackVotes || [];
+  // Sort tracks highest -> lowest votes; tiebreak by track number for stable order
+  const tracks = [...(reveal.trackVotes || [])].sort(
+    (a, b) => b.votes - a.votes || a.trackNumber - b.trackNumber
+  );
   const isLast = room.albumIndex >= room.albums.length - 1;
   const consensusIds = new Set(reveal.consensus.map((c) => c.id));
 
   // bar scale: max votes on this album so 100% width = top vote getter
   const maxVotes = Math.max(1, ...tracks.map((t) => t.votes));
+
+  // Scoreboard: sort players by total score desc, tiebreak by matches this round
+  const scoreboard = [...(reveal.playerResults || [])].sort(
+    (a, b) => b.totalScore - a.totalScore || b.matches - a.matches
+  );
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
@@ -50,7 +58,7 @@ export default function Reveal({ room, iAmHost }) {
       </div>
 
       {/* Vote graph */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 mb-24">
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 mb-4">
         <div className="flex flex-col gap-2.5">
           {tracks.map((t, i) => {
             const isTop = consensusIds.has(t.id);
@@ -115,22 +123,54 @@ export default function Reveal({ room, iAmHost }) {
           })}
         </div>
 
-        {/* legend */}
-        <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap gap-2">
-          {room.players.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-1.5 text-xs bg-white/5 border border-white/10 rounded-full pl-1 pr-3 py-1"
-            >
+      </div>
+
+      {/* Scoreboard: matched songs per player */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 mb-24">
+        <div className="flex items-end justify-between mb-3">
+          <div className="text-xs uppercase tracking-widest text-white/50">scoreboard</div>
+          <div className="text-[10px] uppercase tracking-widest text-white/40">matches in consensus top 3</div>
+        </div>
+        <div className="flex flex-col gap-2">
+          {scoreboard.map((p, i) => {
+            const isLeader = i === 0 && p.totalScore > 0;
+            return (
               <div
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-                style={{ background: playerColor(p.id) }}
+                key={p.id}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition ${
+                  isLeader
+                    ? "bg-gradient-to-r from-amber-400/15 to-transparent border-amber-300/40"
+                    : "bg-black/20 border-white/10"
+                }`}
               >
-                {initials(p.name)}
+                <div className="w-6 text-center font-mono text-white/40 text-sm">#{i + 1}</div>
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border border-black/40 shadow"
+                  style={{ background: playerColor(p.id) }}
+                >
+                  {initials(p.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{p.name}</div>
+                  <div className="text-[11px] text-white/50">
+                    +{p.matches} this album
+                  </div>
+                </div>
+                {/* Match pips: 0..3 */}
+                <div className="hidden sm:flex items-center gap-1 mr-2">
+                  {[0, 1, 2].map((j) => (
+                    <div
+                      key={j}
+                      className={`w-2 h-2 rounded-full transition ${
+                        j < p.matches ? "bg-fuchsia-400" : "bg-white/15"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <div className="font-display text-2xl font-bold tabular-nums">{p.totalScore}</div>
               </div>
-              <span className="text-white/80">{p.name}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

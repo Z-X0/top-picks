@@ -262,11 +262,18 @@ function computeReveal(room) {
     .slice(0, 3);
   const consensusIds = new Set(consensus.map((c) => c.id));
 
-  // Update running totals so the final screen still has scores
-  for (const p of room.players.values()) {
+  // Update running totals AND build per-player results for this album
+  const playerResults = [...room.players.values()].map((p) => {
     const picks = room.picks.get(p.id) || [];
-    p.score += picks.filter((id) => consensusIds.has(id)).length;
-  }
+    const matches = picks.filter((id) => consensusIds.has(id)).length;
+    p.score += matches;
+    return {
+      id: p.id,
+      name: p.name,
+      matches,
+      totalScore: p.score,
+    };
+  });
 
   return {
     album,
@@ -277,6 +284,7 @@ function computeReveal(room) {
       trackNumber: c.trackNumber,
       votes: c.votes,
     })),
+    playerResults,
     totalVoters: room.picks.size,
   };
 }
