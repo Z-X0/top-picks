@@ -17,17 +17,25 @@ export default function TrackRow({
   const audioRef = useRef(null);
   const [progress, setProgress] = useState(0);
 
+  // Stash the latest onStop in a ref so the play/pause effect doesn't depend on it.
+  // Without this, every parent re-render (e.g. when another player locks in)
+  // would change onStop's identity, re-fire this effect, and restart the audio.
+  const onStopRef = useRef(onStop);
+  useEffect(() => {
+    onStopRef.current = onStop;
+  }, [onStop]);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
     if (isPlaying) {
       a.currentTime = 0;
-      a.play().catch(() => onStop?.());
+      a.play().catch(() => onStopRef.current?.());
     } else {
       a.pause();
       setProgress(0);
     }
-  }, [isPlaying, onStop]);
+  }, [isPlaying]);
 
   return (
     <div
