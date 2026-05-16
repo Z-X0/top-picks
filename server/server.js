@@ -172,6 +172,30 @@ app.get("/api/album/:id/tracks", async (req, res) => {
 /** @type {Map<string, Room>} */
 const rooms = new Map();
 
+const MAX_CHAT_HISTORY = 200;
+const MAX_CHAT_LENGTH = 500;
+
+/** Pull the real client IP, accounting for Railway/Heroku style x-forwarded-for. */
+function clientIp(socket) {
+  const xff = socket.handshake.headers["x-forwarded-for"];
+  if (xff) return xff.toString().split(",")[0].trim();
+  const real = socket.handshake.headers["x-real-ip"];
+  if (real) return real.toString();
+  // socket.handshake.address comes back as "::ffff:1.2.3.4" sometimes — trim it
+  const addr = socket.handshake.address || "";
+  return addr.replace(/^::ffff:/, "");
+}
+
+let chatIdCounter = 0;
+function pushChat(room, msg) {
+  const full = { id: ++chatIdCounter, ts: Date.now(), ...msg };
+  room.chat.push(full);
+  if (room.chat.length > MAX_CHAT_HISTORY) {
+    room.chat.splice(0, room.chat.length - MAX_CHAT_HISTORY);
+  }
+  return full;
+}
+
 /**
  * @typedef {Object} Player
  * @property {string} id - socket id
@@ -212,12 +236,14 @@ function publicRoom(room) {
       isHost: p.isHost,
       score: p.score,
       submitted: room.picks.has(p.id),
+      ip: p.ip,
     })),
     artist: room.artist,
     albums: room.albums.map((a) => ({ id: a.id, name: a.name, year: a.year, artwork: a.artwork })),
     albumIndex: room.albumIndex,
     currentAlbum: room.currentAlbum,
     lastReveal: room.lastReveal,
+    chat: room.chat,
   };
 }
 
@@ -323,6 +349,7 @@ io.on("connection", (socket) => {
 
   socket.on("room:create", ({ name }, ack) => {
     const playerName = (name || "Player").toString().slice(0, 20);
+    const ip = clientIp(socket);
     const code = makeCode();
     const room = {
       code,
@@ -335,10 +362,17 @@ io.on("connection", (socket) => {
       currentAlbum: null,
       picks: new Map(),
       lastReveal: null,
+      chat: [],
     };
-    room.players.set(socket.id, { id: socket.id, name: playerName, isHost: true, score: 0 });
+    room.players.set(socket.id, {
+      id: socket.id, name: playerName, isHost: true, score: 0, ip,
+    });
     rooms.set(code, room);
     socket.join(code);
+    pushChat(room, {
+      kind: "system",
+      text: `${playerName} created the room (${ip})`,
+    });
     ack?.({ ok: true, code });
     broadcast(io, code);
   });
@@ -349,10 +383,35 @@ io.on("connection", (socket) => {
     if (!room) return ack?.({ ok: false, error: "Room not found" });
     if (room.phase !== "lobby") return ack?.({ ok: false, error: "Game already in progress" });
     const playerName = (name || "Player").toString().slice(0, 20);
-    room.players.set(socket.id, { id: socket.id, name: playerName, isHost: false, score: 0 });
+    const ip = clientIp(socket);
+    room.players.set(socket.id, {
+      id: socket.id, name: playerName, isHost: false, score: 0, ip,
+    });
     socket.join(code);
+    pushChat(room, {
+      kind: "system",
+      text: `${playerName} joined (${ip})`,
+    });
     ack?.({ ok: true, code });
     broadcast(io, code);
+  });
+
+  socket.on("chat:send", ({ text }, ack) => {
+    const room = getRoomFromSocket();
+    if (!room) return ack?.({ ok: false, error: "no room" });
+    const player = room.players.get(socket.id);
+    if (!player) return ack?.({ ok: false, error: "not in room" });
+    const clean = (text || "").toString().slice(0, MAX_CHAT_LENGTH).trim();
+    if (!clean) return ack?.({ ok: false, error: "empty" });
+    pushChat(room, {
+      kind: "msg",
+      playerId: player.id,
+      name: player.name,
+      ip: player.ip,
+      text: clean,
+    });
+    ack?.({ ok: true });
+    broadcast(io, room.code);
   });
 
   socket.on("game:setArtist", async ({ artist }, ack) => {
@@ -493,17 +552,27 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const room = getRoomFromSocket();
     if (!room) return;
+    const leaving = room.players.get(socket.id);
     room.players.delete(socket.id);
     room.picks.delete(socket.id);
     if (room.players.size === 0) {
       rooms.delete(room.code);
       return;
     }
+    if (leaving) {
+      pushChat(room, {
+        kind: "system",
+        text: `${leaving.name} left (${leaving.ip})`,
+      });
+    }
     if (room.hostId === socket.id) {
-      // promote earliest remaining player
       const next = [...room.players.values()][0];
       next.isHost = true;
       room.hostId = next.id;
+      pushChat(room, {
+        kind: "system",
+        text: `${next.name} is now host`,
+      });
     }
     // If everyone submitted after disconnect, advance reveal
     if (room.phase === "picking" && room.picks.size >= room.players.size && room.picks.size > 0) {
